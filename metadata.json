@@ -1,0 +1,6 @@
+{
+  "name": "RapidRoute - Emergency Vehicle Route Planning",
+  "description": "Production-ready backend, ML travel-time forecasting, and tactical dispatch platform for emergency vehicle route planning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

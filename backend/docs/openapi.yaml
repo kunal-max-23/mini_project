@@ -1,0 +1,249 @@
+openapi: 3.1.0
+info:
+  title: RapidRoute Emergency Vehicle Routing & ML Platform API
+  version: 4.2.1
+  description: >-
+    Production-ready mission-critical routing API for emergency response.
+    Predicts road-segment travel times using gradient-boosted decision trees,
+    dynamic weather/congestion signals, and provides explainable, resilient
+    candidate route recommendations under degraded conditions.
+  contact:
+    name: RapidRoute Operations Engineering
+    email: ops-dispatch@rapidroute.internal
+
+servers:
+  - url: http://localhost:3000
+    description: Local Development / Containerized Server
+
+paths:
+  /api/v1/routes:
+    post:
+      summary: Request candidate emergency routes with ML travel-time forecasting
+      operationId: calculateRoutes
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoutePlanRequest'
+      responses:
+        '200':
+          description: Candidate routes generated with travel time, uncertainty bounds, and explainable recommendation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutePlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/routes/confirm:
+    post:
+      summary: Confirm and dispatch an emergency unit along a chosen route
+      operationId: confirmRoute
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [routeId, incidentId]
+              properties:
+                routeId:
+                  type: string
+                  example: ROUTE_ALPHA
+                incidentId:
+                  type: string
+                  example: INC-8492
+                vehicleId:
+                  type: string
+                  example: VEH_MEDIC_4
+                callSign:
+                  type: string
+                  example: Medic-4
+      responses:
+        '200':
+          description: Route dispatched, Opticom V2X corridors armed, and uplink transmitted to vehicle HUD
+
+  /api/v1/routes/reroute:
+    post:
+      summary: Trigger dynamic reroute diversion when unexpected obstruction occurs
+      operationId: triggerReroute
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                incidentId:
+                  type: string
+                  example: INC-8492
+                cause:
+                  type: string
+                  example: Sudden 2-Car Collision reported at 5th & Harrison
+                bypassRouteId:
+                  type: string
+                  example: ROUTE_DELTA
+      responses:
+        '200':
+          description: Reroute evaluated and broadcasted to dispatch consoles
+
+  /api/v1/conditions:
+    post:
+      summary: Ingest external road condition or sensor event
+      operationId: ingestCondition
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Condition normalized and ingested
+    get:
+      summary: Query active closures, impediments, and weather warnings
+      operationId: getConditions
+      responses:
+        '200':
+          description: List of active road conditions
+
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        '200':
+          description: Service is healthy
+
+  /readyz:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Subsystems are initialized
+
+  /metrics:
+    get:
+      summary: Prometheus & JSON metrics endpoint
+      responses:
+        '200':
+          description: Metrics payload
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RoutePlanRequest:
+      type: object
+      required:
+        - origin
+        - destination
+      properties:
+        origin:
+          type: object
+          required: [lon, lat]
+          properties:
+            lon:
+              type: number
+            lat:
+              type: number
+            address:
+              type: string
+        destination:
+          type: object
+          required: [lon, lat]
+          properties:
+            lon:
+              type: number
+            lat:
+              type: number
+            facilityName:
+              type: string
+        vehicleType:
+          type: string
+          enum: [Ambulance, Fire Engine, Heavy Rescue, Chief Command]
+        priorityLevel:
+          type: string
+          enum: [CODE_3_CRITICAL, CODE_2_URGENT, CODE_1_ROUTINE]
+        constraints:
+          type: object
+          properties:
+            lowClearanceRestricted:
+              type: boolean
+            pavedCorridorsOnly:
+              type: boolean
+            opticomPreemptIntersections:
+              type: boolean
+            hazmatClass9:
+              type: boolean
+        incidentMetadata:
+          type: object
+        forceDegraded:
+          type: boolean
+
+    RoutePlanResponse:
+      type: object
+      properties:
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        calculationDurationMs:
+          type: integer
+        modelVersion:
+          type: string
+        dataFreshnessSeconds:
+          type: integer
+        isDegraded:
+          type: boolean
+        safetyDisclaimer:
+          type: string
+        recommendedRouteId:
+          type: string
+        routes:
+          type: array
+          items:
+            type: object
+        aiRoutingSynthesis:
+          type: object
+          properties:
+            confidenceCategory:
+              type: string
+            narrative:
+              type: string
+            primaryDrivers:
+              type: array
+              items:
+                type: string
+
+  responses:
+    BadRequestError:
+      description: Validation failure
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              error: { type: string, example: INVALID_ORIGIN_COORDINATES }
+              message: { type: string }
+              requestId: { type: string }
+    UnauthorizedError:
+      description: Unauthorized
+    RateLimitError:
+      description: Rate limit exceeded
+    InternalServerError:
+      description: Internal error

@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  rapidroute-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rapidroute-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://rapidroute:tactical_secure_pass@rapidroute-db:5432/rapidroute_db
+      - REDIS_URL=redis://rapidroute-redis:6379
+      - JWT_SECRET=tactical_jwt_secret_dev_key_never_in_production
+      - USE_IN_MEMORY_DB=false
+      - USE_IN_MEMORY_REDIS=false
+      - ROUTE_CACHE_TTL_SECONDS=30
+    depends_on:
+      rapidroute-db:
+        condition: service_healthy
+      rapidroute-redis:
+        condition: service_healthy
+    networks:
+      - rapidroute-net
+
+  rapidroute-db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: rapidroute-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rapidroute
+      POSTGRES_PASSWORD: tactical_secure_pass
+      POSTGRES_DB: rapidroute_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+      - ./backend/db/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./backend/db/seeds/dev_seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rapidroute -d rapidroute_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rapidroute-net
+
+  rapidroute-redis:
+    image: redis:7.2-alpine
+    container_name: rapidroute-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy volatile-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - rapidroute-net
+
+networks:
+  rapidroute-net:
+    driver: bridge
+
+volumes:
+  postgis-data:
+  redis-data:
