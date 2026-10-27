@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Install build dependencies
 COPY package.json package-lock.json* bun.lock* ./
-RUN npm install --ignore-scripts
+RUN npm install --legacy-peer-deps --ignore-scripts
 
 # Copy source code and build frontend bundle
 COPY . .
@@ -29,7 +29,7 @@ RUN addgroup -S rapidroute && adduser -S rapidroute -G rapidroute
 
 # Copy built artifacts and dependencies
 COPY package.json ./
-RUN npm install --omit=dev --ignore-scripts
+RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts
 
 COPY --chown=rapidroute:rapidroute . .
 COPY --from=builder --chown=rapidroute:rapidroute /app/dist ./dist
